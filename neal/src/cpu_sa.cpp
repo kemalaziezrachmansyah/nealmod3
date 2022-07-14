@@ -94,10 +94,13 @@ void simulated_annealing_run(
     const vector<vector<double>>& neighbour_couplings,
     const int sweeps_per_beta,
     const vector<double>& beta_schedule,
-    const vector<int>& onehotpar
+    const vector<int>& onehotpar,
+    const vector<int>& timeslots,
+    const vector<int>& operation_nums
 ) {
     const int num_vars = h.size();
     const int num_groups = onehotpar.size();
+    const int num_jobs = operation_nums.size();
 
     uint64_t rand; // this will hold the value of the rng
 
@@ -108,7 +111,12 @@ void simulated_annealing_run(
     int next_base_index;
     double energydiff;
     int ind1;
-    int ind2; 
+    int ind2;
+    int one_position;
+    int starting_timeslot;
+    int boundary;
+    bool status;
+    int old_one_position;
     
     // perform the sweeps
     for (int beta_idx = 0; beta_idx < (int)beta_schedule.size(); beta_idx++) {
@@ -116,63 +124,95 @@ void simulated_annealing_run(
         const double beta = beta_schedule[beta_idx];
         for (int sweep = 0; sweep < sweeps_per_beta; sweep++) {
 
-            // this threshold will allow us to skip the metropolis update for
-            // variables that have zero chance of getting flipped.
-            // our RNG generates 64 bit integers, so we have a resolution of
-            // 1 / 2^64. since log(1 / 2^64) = -44.361, if the delta energy is
-            // greater than 44.361 / beta, then we can safely skip computing
-            // the probability.
-            const double threshold = 44.36142 / beta;
-
             base_index = 0;
-            next_base_index = onehotpar[0];
+            next_base_index = onehotpar[0]
+            group_index = 0;
 
-            for (int group_index = 0; group_index < num_groups; group_index++) {
-                ind1 = 0;
+            for (int job = 0; job < num_jobs; job++) {
+                one_position = 0;
 
-                while (ind1 < onehotpar[group_index]) {
-                    member_index = base_index + ind1;
-                    ind2 = ind1 + 1;
+                for (int operation = 0; operation < operation_nums[job]; operation++) {
+                    // finding position of variable with value one from old iteration
+                    status = true;
+                    old_one_position = base_index;
+                    while (status) {
+                        if (state[old_one_position] == 1) {
+                            status = false;
+                        }
+                        else {
+                            old_one_position++:
+                        }
+                    }
 
-                    while (ind2 < onehotpar[group_index]) {
-                        other_index = base_index + ind2;
-                        
-                        if (((state[member_index] == 1) && (state[other_index] == -1)) || ((state[member_index] == -1) && (state[other_index] == 1))) {
-                            energydiff = get_flip_energy(member_index, state, h, degrees,
-                                                neighbors, neighbour_couplings);
-                            state[member_index] *= -1;
-                            energydiff += get_flip_energy(other_index, state, h, degrees,
-                                                            neighbors, neighbour_couplings);
-                            state[member_index] *= -1;
+                    starting_timeslot = timeslots[base_index];
 
-                            flip_spin = false;
+                    if (operation == 0) {
+                        offset = 0;
+                    }
+                    else {
+                        offset = one_position - starting_timeslot;
+                    }
 
-                            if (energydiff <= 0.0) {
-                                // automatically accept any flip that results in a lower 
-                                // energy
-                                flip_spin = true;
-                            }
-                            else {
-                                // get a random number, storing it in rand
-                                FASTRAND(rand); 
-                                // accept the flip if exp(-delta_energy*beta) > random(0, 1)
-                                if (exp(-energydiff*beta) * RANDMAX > rand) {
+                    base_index = base_index + offset;
+                    boundary = onehotpar[group_index] - offset;
+
+                    //make new intial one
+                    state[old_one_position] *= -1:
+                    state[base_index] *= -1;
+
+                    ind1 = 0;
+
+                    while (ind1 < boundary) {
+                        member_index = base_index + ind1;
+                        ind2 = ind1 + 1;
+
+                        while (ind2 < boundary) {
+                            other_index = base_index + ind2;
+                            
+                            if (((state[member_index] == 1) && (state[other_index] == -1)) || ((state[member_index] == -1) && (state[other_index] == 1))) {
+                                energydiff = get_flip_energy(member_index, state, h, degrees,
+                                                    neighbors, neighbour_couplings);
+                                state[member_index] *= -1;
+                                energydiff += get_flip_energy(other_index, state, h, degrees,
+                                                                neighbors, neighbour_couplings);
+                                state[member_index] *= -1;
+
+                                flip_spin = false;
+
+                                if (energydiff <= 0.0) {
+                                    // automatically accept any flip that results in a lower 
+                                    // energy
                                     flip_spin = true;
                                 }
-                            }
+                                else {
+                                    // get a random number, storing it in rand
+                                    FASTRAND(rand); 
+                                    // accept the flip if exp(-delta_energy*beta) > random(0, 1)
+                                    if (exp(-energydiff*beta) * RANDMAX > rand) {
+                                        flip_spin = true;
+                                    }
+                                }
 
-                            if (flip_spin) {
-                                state[member_index] *= -1;
-                                state[other_index] *= -1;
+                                if (flip_spin) {
+                                    state[member_index] *= -1;
+                                    state[other_index] *= -1;
+                                }
+
+                                if (state[member_index] == 1) {
+                                    one_position = timeslots[member_index];
+                                }
+                                else {
+                                    one_position = timeslots[other_index];
+                                }
                             }
+                            ind2++;
                         }
-                        ind2++;
+                        ind1++;
                     }
-                    ind1++;
-                }
-                base_index = next_base_index;
-                if (group_index < (num_groups - 1)) {
-                    next_base_index += onehotpar[(group_index + 1)]; 
+
+                    base_index = next_base_index;
+                    group_index++;
+                    next_base_index += onehotpar[group_index];
                 }
             }
         }
@@ -245,6 +285,8 @@ int general_simulated_annealing(
     const vector<double> beta_schedule,
     const uint64_t seed,
     const vector<int> onehotpar,
+    const vector<int> timeslots,
+    const vector<int> operation_nums,
     callback interrupt_callback,
     void * const interrupt_function
 ) {
@@ -309,7 +351,7 @@ int general_simulated_annealing(
         // the sample there
         simulated_annealing_run(state, h, degrees, 
                                 neighbors, neighbour_couplings, 
-                                sweeps_per_beta, beta_schedule, onehotpar);
+                                sweeps_per_beta, beta_schedule, onehotpar, timeslots, operation_nums);
 
         // compute the energy of the sample and store it in `energies`
         energies[sample] = get_state_energy(state, h, coupler_starts, 
