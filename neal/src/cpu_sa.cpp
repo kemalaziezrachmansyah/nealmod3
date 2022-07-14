@@ -117,6 +117,8 @@ void simulated_annealing_run(
     int boundary;
     bool status;
     int old_one_position;
+    int group_index;
+    int offset;
     
     // perform the sweeps
     for (int beta_idx = 0; beta_idx < (int)beta_schedule.size(); beta_idx++) {
@@ -125,7 +127,7 @@ void simulated_annealing_run(
         for (int sweep = 0; sweep < sweeps_per_beta; sweep++) {
 
             base_index = 0;
-            next_base_index = onehotpar[0]
+            next_base_index = onehotpar[0];
             group_index = 0;
 
             for (int job = 0; job < num_jobs; job++) {
@@ -140,7 +142,7 @@ void simulated_annealing_run(
                             status = false;
                         }
                         else {
-                            old_one_position++:
+                            old_one_position++;
                         }
                     }
 
@@ -157,7 +159,7 @@ void simulated_annealing_run(
                     boundary = onehotpar[group_index] - offset;
 
                     //make new intial one
-                    state[old_one_position] *= -1:
+                    state[old_one_position] *= -1;
                     state[base_index] *= -1;
 
                     ind1 = 0;
